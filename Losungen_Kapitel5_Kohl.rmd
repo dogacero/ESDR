@@ -1,0 +1,306 @@
+---
+title: "Lösungen der Übungsaufgaben"
+author: "Matthias Kohl"
+date: "2024-11-06"
+output: html_document
+---
+
+## Vorbereitungen
+
+Wir laden zunächst die benötigten Pakete.
+
+```{r, message=FALSE}
+library(ggplot2)
+library(MKdescr)
+library(distrMod)
+library(qqplotr)
+library(RobLox)
+library(gridExtra)
+library(MKinfer)
+library(ROptEst)
+library(RobExtremes)
+library(MKpower)
+library(MKclass)
+library(rmx)
+library(MASS)
+library(boot)
+library(parallel)
+```
+
+Außerdem laden wir den Datensatz.
+
+```{r}
+ITSDaten <- read.csv2(file = "ITSDaten.csv", fileEncoding = "utf8", 
+                      stringsAsFactors = TRUE) 
+```
+
+Damit sind die notwendigen Vorbereitungen abgeschlossen.
+
+
+## Aufgabe 7
+
+Betrachten Sie nur Patienten mit einer Aufenthaltsdauer von mehr als einem Tag (LOS > 1).
+
+```{r}
+ITSDaten.LOS2 <- ITSDaten[ITSDaten$LOS > 1, ]
+```
+
+Nehmen Sie an, dass man die maximale Körpertemperatur (d.h. Spalte Temperatur) von 
+diesen ITS-Patienten durch eine Normalverteilung beschreiben kann. Berechnen Sie 
+den ML-Schätzer und vergleichen Sie das Ergebnis mit Median und MAD sowie dem 
+RMX-Schätzer (verwenden Sie Funktion roblox aus dem Paket "RobLox" (Kohl (2019)) 
+oder die Funktion rmx aus dem Paket "rmx" (Kohl (2022c))). Für den RMX-Schätzer 
+gehen Sie von 1 - 5% fehlerhaften Daten aus. Bestimmen Sie auch die entsprechenden 
+Konfidenzintervalle mit Hilfe von Bootstrap. Stellen Sie die Daten graphisch in 
+Form eines Histogramms dar und fügen Sie die drei Normalverteilungsdichten mit 
+den geschätzten Parametern hinzu. Validieren Sie die drei Modelle zusätzlich mit 
+pp- und qq-Plots.
+
+
+Wir berechnen zuerst den ML-Schätzer.
+
+```{r}
+fitdistr(ITSDaten.LOS2$Temperatur, densfun = "normal")
+```
+
+Wir erhalten 37.9 °C als Schätzwert für den Mittelwert und 1.17 °C für die SD.
+
+Als nächstes bestimmen wir den Median und den MAD.
+
+```{r}
+median(ITSDaten.LOS2$Temperatur)
+mad(ITSDaten.LOS2$Temperatur)
+```
+
+Der Median liegt bei 37.8 °C und der MAD bei 1.04 °C. Diese Werte sind ähnlich
+zu den Werten des ML-Schätzers. Da Mittelwert und Median ähnlich sind, spricht
+dies für eine recht symmetrische Datenverteilung. Da der ML-Schätzer für die SD
+etwas größer als der MAD ist, könnte die Datenverteilung evtl. etwas breiter 
+sein als bei einer Normalverteilung.
+
+Zuletzt berechnen wir noch den RMX-Schätzer. Wir verwenden zuerst die Funktion
+roblox aus dem Paket RobLox.
+
+```{r}
+## Ausgabeoption ändern
+distrModOptions(show.details = "minimal")
+roblox(ITSDaten.LOS2$Temperatur, eps.lower = 0.01, eps.upper = 0.05, k = 3)
+```
+
+Wir erhalten 37.8 °C als Schätzerwert für den Mittelwert und 1.14 °C für die SD.
+Die Werte sind sehr ähnlich zu den bereits berechneten Schätzwerten.
+
+Wir wenden außerdem die Funktion rmx aus dem Paket rmx an, um den RMX-Schätzer
+zu bestimmen.
+
+```{r}
+res.rmx <- rmx(ITSDaten.LOS2$Temperatur, model = "norm", 
+               eps.lower = 0.01, eps.upper = 0.05)
+res.rmx
+```
+
+Die Werte sind bis auf numerische Ungenauigkeiten identisch zur Funktion roblox.
+
+
+Im nächsten Schritt berechnen wir die Bootstrap-Konfidenzintervalle für die
+Schätzer. Wir beginnen wieder mit dem ML-Schätzer.
+
+Wir verwenden die Funktion normCI aus dem Paket MKinfer. Die SD wird in diesem
+Fall aber nicht durch den ML-Schätzer bestimmt, sondern durch den biasfreien
+Schätzer. Wir wählen als Typ des Bootstrap-Konfidenzintervalls das "stud" 
+Intervall, da im Fall der SD eine schiefe Verteilung vorliegt.
+
+```{r}
+normCI(ITSDaten.LOS2$Temperatur, boot = TRUE, bootci.type = "stud")
+```
+
+Wir erhalten als 95% Konfidenzintervall für den Mittelwert [37.7, 38.0] °C. 
+Für die SD ergibt sich [1.07, 1.30] °C.
+
+Für das Bootstrap-Konfidenzintervall des exakten ML-Schätzers müssen wir 
+die Funktionen boot und boot.ci aus dem Paket boot verwenden. Wir definieren
+zunächst eine Funktion, welche die Schätzungen und deren asymptotische 
+Varianzen ausgibt.
+
+```{r}
+## x: Vektor der Beobachtungen
+## i: Vektor der Indizes der Bootstrap-Stichprobe
+MLEst <- function(x, i){
+  res <- MLEstimator(x[i], ParamFamily = NormFamily())
+  c(estimate(res), diag(asvar(res)))
+}
+```
+
+Wir parallelisieren die Berechnungen, um diese zu beschleunigen.
+
+```{r}
+nr.cpus <- detectCores()-1
+```
+
+Wir führen die Berechnungen durch. Wir wählen als Typ des Bootstrap-Konfidenzintervalls
+die "perc" Methode, da eine ausreichend große Fallzahl vorliegt und im Fall des
+Typs "stud" nur asymptotische Varianzen vorliegen.
+
+```{r, cache=TRUE}
+## Bootstrap-Schätzungen
+boot.out <- boot(ITSDaten.LOS2$Temperatur, statistic = MLEst, R = 999,
+                 parallel = "multicore", ncpus = nr.cpus)
+## Bootstrap-Konfidenzintervall für mean
+boot.ci(boot.out, index = c(1,3), type = "perc")
+## Bootstrap-Konfidenzintervall für sd
+boot.ci(boot.out, index = c(2,4), type = "perc")
+```
+
+Als 95% Konfidenzintervall für den Mittelwert erhalten wir [37.7, 38.0] °C und
+für die SD ergibt sich [1.06, 1.29] °C. Die Ergebnisse sind demnach sehr ähnlich
+zu den Ergebnissen der Funktion normCI.
+
+Als nächstes berechnen wir die Boostrap-Konfidenzintervalle für Median und MAD.
+Wir wählen wieder den Typ "perc".
+
+```{r}
+## Bootstrap-Konfidenzintervall für den Median
+medianCI(ITSDaten.LOS2$Temperatur, method = "boot", bootci.type = "perc")
+## Bootstrap-Konfidenzintervall für den MAD
+madCI(ITSDaten.LOS2$Temperatur, method = "boot", bootci.type = "perc")
+```
+
+Wir erhalten [37.6, 38.0] °C als 95% Konfidenzintervall für den Median und
+[0.89, 1.33] °C für den MAD. Die Konfidenzintervalle sind etwas länger als
+im Fall des ML-Schätzers, was wahrscheinlich durch die größere Varianz von 
+Median und MAD verursacht wird.
+
+Zuletzt berechnen wir noch die Boostrap-Konfidenzintervalle für den RMX-Schätzer.
+
+Wir beginnen mit der Funktion roblox. In diesem Fall müssen wir zusätzlich
+die Funktionen aus dem Paket boot verwenden. Wir definieren zuerst eine 
+Funktion, mit der die Schätzwerte und die asymptotischen Varianzen berechnet
+werden.
+
+```{r}
+## x: Vektor der Beobachtungen
+## i: Vektor der Indizes der Bootstrap-Stichprobe
+RMXEst <- function(x, i){
+  res <- roblox(x[i], eps.lower = 0.01, eps.upper = 0.05, k = 3)
+  c(estimate(res), diag(asvar(res)))
+}
+```
+
+Wir wählen den Typ "stud" für das Bootstrap Konfidenzintervall. 
+
+```{r, cache = TRUE}
+## Bootstrap-Schätzungen
+boot.out <- boot(ITSDaten.LOS2$Temperatur, statistic = RMXEst, R = 999)
+## Bootstrap-Konfidenzintervall für den Mittelwert
+boot.ci(boot.out, index = c(1,3), type = "stud")
+## Bootstrap-Konfidenzintervall für die Standardabweichung
+boot.ci(boot.out, index = c(2,4), type = "stud")
+```
+
+Einfacher kann man dies für das Ergebnis der Funktion rmx erreichen, indem 
+man die Funktion confint aufruft.
+
+```{r}
+confint(res.rmx, method = "boot", type = "stud")
+```
+
+Es ergibt sich [37.6, 38.0] °C für das Konfidenzintervall des Mittelwertes und
+[1.03, 1.29] °C für die Standardardabweichung. Das Ergebnis ist ähnlich zum
+ML-Schätzer.
+
+Als nächstes erstellen wir das Histogramm mit den Dichteschätzungen.
+
+```{r}
+ggplot(ITSDaten.LOS2, aes(x=Temperatur)) +
+  geom_histogram(aes(y=after_stat(density)), 
+                 breaks = seq(from = 33, to = 42, by = 0.5), 
+                 fill = "darkgrey") +
+  geom_density(color = "orange") + ylab("Dichte") +
+  stat_function(fun = dnorm, args = list(mean = 37.9, sd = 1.17),
+                color = "darkred", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.04),
+                color = "darkblue", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.14),
+                color = "darkgreen", linewidth = 2) +
+  annotate("text", x = c(40, 40, 40), y = c(0.31, 0.29, 0.27), 
+           col = c("darkred", "darkblue", "darkgreen"),
+           label = c("ML-Schätzer", "Median und MAD", "RMX-Schätzer"))+
+  ggtitle("Maximale Körpertemperatur")
+```
+
+Es hat den Anschein, dass die Modelle von ML- und RMX-Schätzer etwas besser
+zu den Daten passen als das Modell von Median und MAD.
+
+Im Folgenden erzeugen wir die pp- und qq-Plots für die Schätzer.
+
+Wir beginnen mit dem ML-Schätzer.
+
+```{r}
+gg1 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete Maximale Körpertemperatur") + 
+  ylab("Modell für Maximale Körpertemperatur") + 
+  ggtitle("pp-Plot für ML-Schätzer")
+gg2 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  xlab("Modell für Maximale Körpertemperatur") + 
+  ylab("Beobachtete Maximale Körpertemperatur") + 
+  ggtitle("qq-Plot für ML-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+Es zeigt sich eine gute Übereinstimmung zwischen den Daten und dem Modell. 
+Nahezu alle Punkte liegen innerhalb der Konfidenzbänder.
+
+```{r}
+gg1 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.8, sd = 1.04)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.8, sd = 1.04)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete Maximale Körpertemperatur") + 
+  ylab("Modell für Maximale Körpertemperatur") + 
+  ggtitle("pp-Plot für Median und MAD")
+gg2 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.8, sd = 1.04), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.8, sd = 1.04)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.8, sd = 1.04), identity = TRUE) + 
+  xlab("Modell für Maximale Körpertemperatur") + 
+  ylab("Beobachtete Maximale Körpertemperatur") + 
+  ggtitle("qq-Plot für Median und MAD")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+Die Anpassung ist hier nicht so gut wie im Fall des ML-Schätzers. Insbesondere
+für höhere Temperaturen zeigen sich auffällige Unterschiede zwischen den Daten
+und dem geschätzten Modell.
+
+```{r}
+gg1 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete Maximale Körpertemperatur") + 
+  ylab("Modell für Maximale Körpertemperatur") + 
+  ggtitle("pp-Plot für RMX-Schätzer")
+gg2 <- ggplot(ITSDaten.LOS2, aes(sample = Temperatur)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  xlab("Modell für Maximale Körpertemperatur") + 
+  ylab("Beobachtete Maximale Körpertemperatur") + 
+  ggtitle("qq-Plot für RMX-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+Die Anpassung ist ähnlich gut wie im Fall des ML-Schätzers. 
+
+Wir müssen uns demnach zwischen ML- und RMX-Schätzer entscheiden. 
+
+Für die Entscheidung kann zum Beispiel die vermutete Datenqualität herangezogen
+werden. Ausgehend von der Annahme, dass 1-5% fehlerhafte Daten vorliegen, wäre
+der RMX-Schätzer dem ML-Schätzer vorzuziehen.
+
