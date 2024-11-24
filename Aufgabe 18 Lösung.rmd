@@ -1,0 +1,149 @@
+---
+title: "Lösungen der Übungsaufgaben"
+author: "Doga Ceren Bozkurt-Sezin Özer"
+date: "2024-11-24"
+output: html_document
+---
+
+```{r}
+# CSV-Datei einlesen
+ITSDaten_Gruppe3_MTZ <- read.csv2(file = "ITSDaten_Gruppe3_MTZ.csv", fileEncoding = "utf-8", stringsAsFactors = TRUE)
+
+# Filtern der Daten für Patienten mit einer Aufenthaltsdauer von genau einem Tag (LOS = 1)
+ITSDaten_LOS1 <- ITSDaten_Gruppe3_MTZ [ ITSDaten_Gruppe3_MTZ $LOS == 1 , ]
+
+
+print(ITSDaten_LOS1)
+```
+
+
+
+summary(ITSDaten_LOS1$SAPS.II)
+
+> summary(ITSDaten_LOS1$SAPS.II)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+  14.00   27.75   37.00   40.42   53.00   89.00
+
+
+
+```{r}
+ITSDaten_ML_Schätzer <- fitdistr(ITSDaten_LOS1$SAPS.II, densfun = "normal")
+print(ITSDaten_ML_Schätzer)
+```
+
+Wir erhalten 40.423077 °C als Schätzwert für den Mittelwert und 15.923309 °C für die SD.
+
+
+install.packages("ROptEst")
+install.packages("RobExtremes")
+library(ROptEst)
+library(RobExtremes)
+
+
+```{r}
+ITSDaten_Gruppe3_MTZ <- read.csv2(file = "ITSDaten_Gruppe3_MTZ.csv", fileEncoding = "utf-8", stringsAsFactors = TRUE)
+
+Modell <- WeibullFamily()
+
+SAPS.II<- ITSDaten_Gruppe3_MTZ$SAPS.II
+
+MLest <- MLEstimator(SAPS.II, Modell)
+print(MLest)
+
+
+MDest <- CvMMDEstimator(SAPS.II, Modell)
+print(MDest)
+
+RMXest <- roptest(SAPS.II, Modell, eps.lower = 0.01, eps.upper = 0.05, steps = 3)
+print(RMXest)
+
+
+MLest_conf <- confint(MLest)
+MDest_conf <- confint(MDest)
+RMXest_conf <- confint(RMXest)
+
+print(MLest_conf)
+print(MDest_conf)
+print(RMXest_conf)
+```
+
+
+
+```{r}
+# RMX-Schätzer
+distrModOptions(show.details = "minimal")
+roblox(ITSDaten_LOS1$SAPS.II, eps.lower = 0.00, eps.upper = 0.05, k = 3)
+```
+
+
+```{r}
+median(ITSDaten_LOS1$SAPS.II)
+mad(ITSDaten_LOS1$SAPS.II)
+```
+
+Histogramm
+```{r}
+ggplot(ITSDaten_LOS1, aes(x=SAPS.II)) +
+  geom_histogram(aes(y=after_stat(density)), 
+                 breaks = seq(from = 33, to = 42, by = 0.5), 
+                 fill = "darkgrey") +
+  geom_density(color = "orange") + ylab("Dichte") +
+  stat_function(fun = dnorm, args = list(mean = 37.9, sd = 1.17),
+                color = "darkred", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.04),
+                color = "darkblue", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.14),
+                color = "darkgreen", linewidth = 2) +
+  annotate("text", x = c(40, 40, 40), y = c(0.31, 0.29, 0.27), 
+           col = c("darkred", "darkblue", "darkgreen"),
+           label = c("ML-Schätzer", "Median und MAD", "RMX-Schätzer"))+
+  ggtitle("SAPS.II")
+```
+
+
+ggsave("plot4.png", width = 12, height = 12)
+wir haben das Histogramm als png gespeichert.
+
+
+```{r}
+gg1 <- ggplot(ITSDaten_LOS1, aes(sample = SAPS.II)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete SAPS.II Werte") + 
+  ylab("Modell für SAPS.II Werte") + 
+  ggtitle("pp-Plot für ML-Schätzer")
+gg2 <- ggplot(ITSDaten_LOS1, aes(sample = SAPS.II)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  xlab("Modell für SAPS.II Werte") + 
+  ylab("Beobachtete SAPS.II Werte") + 
+  ggtitle("qq-Plot für ML-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+ggsave("plot5.png", width = 8, height = 6)
+wir haben das qqplot für ML-Schätzer als png gespeichert.
+
+```{r}
+gg1 <- ggplot(ITSDaten_LOS1, aes(sample = SAPS.II)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete SAPS.II Werte") + 
+  ylab("Modell für SAPS.II Werte") + 
+  ggtitle("pp-Plot für RMX-Schätzer")
+gg2 <- ggplot(ITSDaten_LOS1, aes(sample = SAPS.II)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  xlab("Modell für SAPS.II Werte") + 
+  ylab("Beobachtete SAPS.II Werte") + 
+  ggtitle("qq-Plot für RMX-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+ggsave("plot6.png", width = 8, height = 6)
+Wir haben das qqplot für RMX-Schätzer als png gespeichert.
+Die Anpassung ist ähnlich gut wie im Fall des ML-Schätzers.
