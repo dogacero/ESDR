@@ -1,0 +1,221 @@
+---
+title: "Lösungen der Übungsaufgaben"
+author: "Doga Ceren Bozkurt-Sezin Özer"
+date: "2024-11-24"
+output: html_document
+---.c-  .wemö
+
+
+```{r}
+# ITSDaten einlesen aus der CSV-Datei
+ITSDaten_Gruppe3_MTZ <- read.csv2(file = "ITSDaten_Gruppe3_MTZ.csv", fileEncoding = "utf-8", stringsAsFactors = TRUE)
+
+# Verteilung der Leberversagen-Werte in der Tabelle berechnen
+leberversagen_verteilung <- table(ITSDaten_Gruppe3_MTZ$Leberversagen) / nrow(ITSDaten_Gruppe3_MTZ)
+
+# Ausgabe der Verteilung
+print(leberversagen_verteilung)
+```
+
+```{r}
+# CSV-Datei einlesen
+ITSDaten_Gruppe3_MTZ <- read.csv2(file = "ITSDaten_Gruppe3_MTZ.csv", fileEncoding = "utf-8", stringsAsFactors = TRUE)
+
+# Filtern der Daten für Patienten mit einer Aufenthaltsdauer von genau einem Tag (LOS = 1)
+ITSDaten_LOS1 <- ITSDaten_Gruppe3_MTZ[ITSDaten_Gruppe3_MTZ$LOS == 1, ]
+
+# Entfernen des Ausreißers mit einer Körpertemperatur von 9,1 Celsius
+ITSDaten_LOS1 <- ITSDaten_LOS1[ITSDaten_LOS1$Temperatur > 10, ]
+
+print(ITSDaten_LOS1)
+```
+
+```{r}
+ITSDaten_ML_Schätzer <- fitdistr(ITSDaten_LOS1$Temperatur, densfun = "normal")
+print(ITSDaten_ML_Schätzer)
+```
+
+Wir erhalten 37.7711538 °C als Schätzwert für den Mittelwert und 1.1785481 °C für die SD.
+
+```{r}
+temperatur <- ITSDaten_ML_Schätzer$Temperatur
+```
+
+```{r}
+median(ITSDaten_LOS1$Temperatur)
+mad(ITSDaten_LOS1$Temperatur)
+```
+
+
+Der Median liegt bei 37.45 °C und der MAD bei 1.11195 °C. Diese Werte sind ähnlich zu den Werten des ML-Schätzers.
+Da Mittelwert und Median ähnlich sind, spricht dies für eine recht symmetrische Datenverteilung.
+Da der ML-Schätzer für die SD 0.1 °C größer als der MAD ist, 
+könnte die Datenverteilung evtl. etwas breiter sein als bei einer Normalverteilung.
+
+
+```{r}
+# RMX-Schätzer
+distrModOptions(show.details = "minimal")
+roblox(ITSDaten_LOS1$Temperatur, eps.lower = 0.00, eps.upper = 0.05, k = 3)
+```
+
+
+Wir erhalten 37.69 °C als Schätzerwert für den Mittelwert und 1.169 °C für die SD.
+Die Werte sind sehr ähnlich zu den bereits berechneten Schätzwerten.
+
+
+```{r}
+rmx <- rmx(ITSDaten_LOS1$Temperatur, model = "norm", 
+               eps.lower = 0.00, eps.upper = 0.05)
+res.rmx
+```
+
+
+Wir haben diesen Schritt übersprungen, da es kein Paket gab.
+
+
+```{r}
+normCI(ITSDaten_LOS1$Temperatur, boot = TRUE, bootci.type = "stud")
+```
+
+
+Wir erhalten als 95% Konfidenzintervall für den Mittelwert [37.46, 38.12] °C. 
+Für die SD ergibt sich [1.012,  1.494] °C.
+
+
+```{r}
+## x: Vektor der Beobachtungen
+## i: Vektor der Indizes der Bootstrap-Stichprobe
+RMXEst <- function(x, i){
+  res <- roblox(x[i], eps.lower = 0.00, eps.upper = 0.05, k = 3)
+  c(estimate(res), diag(asvar(res)))
+}
+```
+
+```{r}
+nr.cpus <- detectCores()-1
+```
+
+```{r, cache = TRUE}
+## Bootstrap-Schätzungen
+boot.out <- boot(ITSDaten_LOS1$Temperatur, statistic = RMXEst, R = 999)
+## Bootstrap-Konfidenzintervall für den Mittelwert
+boot.ci(boot.out, index = c(1,3), type = "stud")
+## Bootstrap-Konfidenzintervall für die Standardabweichung
+boot.ci(boot.out, index = c(2,4), type = "stud")
+```
+
+
+Als 95% Konfidenzintervall für den Mittelwert erhalten wir [37.37, 38.02] °C und
+für die SD ergibt sich [0.963,  1.471] °C. Die Ergebnisse sind demnach sehr ähnlich
+zu den Ergebnissen der Funktion normCI.
+
+```{r}
+## Bootstrap-Konfidenzintervall für den Median
+medianCI(ITSDaten_LOS1$Temperatur, method = "boot", bootci.type = "perc")
+## Bootstrap-Konfidenzintervall für den MAD
+madCI(ITSDaten_LOS1$Temperatur, method = "boot", bootci.type = "perc")
+```
+
+Wir erhalten [37.30, 38.05] °C als 95% Konfidenzintervall für den Median und
+[0.741,  1.631] °C für den MAD. 
+median
+ 37.45
+MAD
+1.11195
+
+```{r}
+## x: Vektor der Beobachtungen
+## i: Vektor der Indizes der Bootstrap-Stichprobe
+RMXEst <- function(x, i){
+  res <- roblox(x[i], eps.lower = 0.01, eps.upper = 0.05, k = 3)
+  c(estimate(res), diag(asvar(res)))
+}
+```
+
+```{r, cache = TRUE}
+## Bootstrap-Schätzungen
+boot.out <- boot(ITSDaten_LOS1$Temperatur, statistic = RMXEst, R = 999)
+## Bootstrap-Konfidenzintervall für den Mittelwert
+boot.ci(boot.out, index = c(1,3), type = "stud")
+## Bootstrap-Konfidenzintervall für die Standardabweichung
+boot.ci(boot.out, index = c(2,4), type = "stud")
+```
+
+```{r}
+confint(res.rmx, method = "boot", type = "stud")
+```
+
+rmx fehlt. 
+
+Es ergibt sich [37.34, 38.06] °C für das Konfidenzintervall des Mittelwertes und
+[ 0.968,  1.490] °C für die Standardardabweichung. Die Werte befinden sie sich innerhalb des Konfidenzintervalls.
+
+
+
+Histogramm
+```{r}
+ggplot(ITSDaten_LOS1, aes(x=Temperatur)) +
+  geom_histogram(aes(y=after_stat(density)), 
+                 breaks = seq(from = 33, to = 42, by = 0.5), 
+                 fill = "darkgrey") +
+  geom_density(color = "orange") + ylab("Dichte") +
+  stat_function(fun = dnorm, args = list(mean = 37.9, sd = 1.17),
+                color = "darkred", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.04),
+                color = "darkblue", linewidth = 2) +
+  stat_function(fun = dnorm, args = list(mean = 37.8, sd = 1.14),
+                color = "darkgreen", linewidth = 2) +
+  annotate("text", x = c(40, 40, 40), y = c(0.31, 0.29, 0.27), 
+           col = c("darkred", "darkblue", "darkgreen"),
+           label = c("ML-Schätzer", "Median und MAD", "RMX-Schätzer"))+
+  ggtitle("Maximale Körpertemperatur")
+```
+
+
+ggsave("plot.png", width = 8, height = 6)
+wir haben das Histogramm als png gespeichert.
+
+
+```{r}
+gg1 <- ggplot(ITSDaten_LOS1, aes(sample = Temperatur)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete Maximale Körpertemperatur") + 
+  ylab("Modell für Maximale Körpertemperatur") + 
+  ggtitle("pp-Plot für ML-Schätzer")
+gg2 <- ggplot(ITSDaten_LOS1, aes(sample = Temperatur)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.9, sd = 1.17)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.9, sd = 1.17), identity = TRUE) + 
+  xlab("Modell für Maximale Körpertemperatur") + 
+  ylab("Beobachtete Maximale Körpertemperatur") + 
+  ggtitle("qq-Plot für ML-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+ggsave("plot2.png", width = 8, height = 6)
+wir haben das qqplot für ML-Schätzer als png gespeichert.
+
+```{r}
+gg1 <- ggplot(ITSDaten_LOS1, aes(sample = Temperatur)) + 
+  qqplotr::stat_pp_band(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_pp_line() + 
+  xlab("Beobachtete Maximale Körpertemperatur") + 
+  ylab("Modell für Maximale Körpertemperatur") + 
+  ggtitle("pp-Plot für RMX-Schätzer")
+gg2 <- ggplot(ITSDaten_LOS1, aes(sample = Temperatur)) + 
+  qqplotr::stat_qq_band(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  qqplotr::stat_qq_point(dparams = list(mean = 37.8, sd = 1.14)) + 
+  qqplotr::stat_qq_line(dparams = list(mean = 37.8, sd = 1.14), identity = TRUE) + 
+  xlab("Modell für Maximale Körpertemperatur") + 
+  ylab("Beobachtete Maximale Körpertemperatur") + 
+  ggtitle("qq-Plot für RMX-Schätzer")
+grid.arrange(gg1, gg2, nrow = 1)
+```
+
+ggsave("plot3.png", width = 8, height = 6)
+Wir haben das qqplot für RMX-Schätzer als png gespeichert.
+Die Anpassung ist ähnlich gut wie im Fall des ML-Schätzers.

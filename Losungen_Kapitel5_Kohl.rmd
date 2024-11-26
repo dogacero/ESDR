@@ -30,8 +30,8 @@ library(parallel)
 Außerdem laden wir den Datensatz.
 
 ```{r}
-ITSDaten <- read.csv2(file = "ITSDaten.csv", fileEncoding = "utf8", 
-                      stringsAsFactors = TRUE) 
+ITSDaten <- read.csv2(file = "ITSDaten.csv", fileEncoding = "utf8",
+                      stringsAsFactors = TRUE)
 ```
 
 Damit sind die notwendigen Vorbereitungen abgeschlossen.
